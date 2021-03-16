@@ -1,0 +1,171 @@
+---
+title: "Homework 3"
+author: "Justine Joi Ormita"
+date: "3/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+etf4 <- read.csv('myetf4.csv')
+str(etf4)
+
+library(xts)
+
+etf4.xts <- as.xts(etf4[, -1],
+        order.by = as.Date(etf4$Index, "%Y-%m-%d"))
+head(etf4.xts)
+class(etf4.xts)
+
+firm_data1 = read.csv('3firmExample.csv')
+str(firm_data1)
+firm_data1$date
+
+library(xts)
+date1 = as.Date(firm_data1[,1], "%Y/%m/%d")
+
+# Convert firm_data1 into time series data: xts
+firm_data1.xts = as.xts(firm_data1[,-1], order.by = date1)
+head(firm_data1.xts)
+
+# Minimum Variance Portfolio
+library(fBasics)
+Sigma <-  cov(firm_data1[,2:4])
+one.vec <-  rep(1, 3)
+Sigma.inv.mat <- solve(Sigma)
+top.mat <- Sigma.inv.mat%*%one.vec
+bot.val <- as.numeric(t(one.vec)%*%top.mat)
+mvp.w <-  top.mat / bot.val
+mvp.w
+mu.vec <- colMeans(firm_data1[, 2:4])
+mvp.ret <- as.numeric(crossprod(mvp.w, mu.vec))
+mvp.ret
+mvp.sig2 <- as.numeric(t(mvp.w)%*%Sigma%*%mvp.w)
+mvp.sig <- sqrt(mvp.sig2)
+mvp.sig
+
+#Optimal Minimum Variance Portfolio
+r0 <- 0.06/12
+top.mat <- cbind(2*Sigma, mu.vec, rep(1, 3))
+mid.vec <- c(mu.vec, 0, 0)
+bot.vec <- c(rep(1, 3), 0, 0)
+A.mat <- rbind(top.mat, mid.vec, bot.vec)
+b.vec <- c(rep(0, 3), r0, 1)
+z.mat <- solve(A.mat)%*%b.vec
+w.r0 <- z.mat[1:3,]
+mu.r0 <- as.numeric(crossprod(w.r0, mu.vec))
+sig2.r0 <- as.numeric(t(w.r0)%*%Sigma%*%w.r0)
+sig.r0 <- sqrt(sig2.r0)
+sig.r0
+
+return <- firm_data1[,2:4]
+
+#Minimum Variance 
+minvariance <- function(return, r0) {
+  Sigma <-  cov(return)
+  mu.vec <- colMeans(return)
+  #one.vec <-  rep(1, 3)
+  top.mat <- cbind(2*Sigma, mu.vec, rep(1, 3))
+  mid.vec <- c(mu.vec, 0, 0)
+  bot.vec <- c(rep(1, 3), 0, 0)
+  A.mat <- rbind(top.mat, mid.vec, bot.vec)
+  b.vec <- c(rep(0, 3), r0, 1)
+  z.mat <- solve(A.mat)%*%b.vec
+  w.r0 <- z.mat[1:3,]
+  mu.r0 <- as.numeric(crossprod(w.r0, mu.vec))
+  sig2.r0 <- as.numeric(t(w.r0)%*%Sigma%*%w.r0)
+  sig.r0 <- sqrt(sig2.r0)
+  # Output Function:
+   list(weight = w.r0, rt = mu.r0, sd = sig.r0)
+}
+
+minvariance(return, 0.005)
+
+#Plot Efficient Frontier Function
+frontier <- function(return){
+  Sigma <-  cov(return)
+  mu.vec <- colMeans(return)
+  #return <- log(tail(assets, -1) / head(assets, -1))
+  n <-  ncol(return)
+  top.mat <- cbind(2*Sigma, mu.vec, rep(1, 3))
+  mid.vec <- c(mu.vec, 0, 0)
+  bot.vec <- c(rep(1, 3), 0, 0)
+  A.mat <- rbind(top.mat, mid.vec, bot.vec)
+  rbase <- seq(min(mu.vec), max(mu.vec), length = 100)
+  s <- sapply(rbase, function(x) {
+    b.vec <- c(rep(0, n), x, 1)
+    z.mat <- solve(A.mat)%*%b.vec
+    w.r0 <- z.mat[1:3,]
+    sqrt(w.r0%*%Sigma%*%w.r0)
+  })
+  plot(s, rbase, xlab = 'Std', ylab = 'Return')
+}
+frontier(return)
+
+#Tangency Portfolio by closed form
+rf = 0.01/12
+mr = colMeans(firm_data1[,2:4])
+mr.mtx = matrix(mr, ncol=1)
+mr_rf = mr - rf
+mr_rf = matrix(mr_rf, ncol=1)
+mr_rf
+a1 = inv(Sigma)%*%mr_rf
+b1 = t(one.vec)%*%a1
+tp = a1 / as.numeric(b1)
+tp
+#portfolio expected return
+ret.tp  = sum(mr.mtx*tp)
+ret.tp
+#portfolio standard deviation
+std.tp = sqrt((t(tp)%*%Sigma)%*%tp)
+std.tp
+#sharpe ratio
+sharpe.tp = (ret.tp - rf)/std.tp
+sharpe.tp
+
+# Risk Free Rate
+rf = 0.01/12
+Sigma.inv.mat = solve(Sigma.inv.mat)
+one.vec = rep(1, 3)
+mu.minus.rf = mu.vec - rf*one.vec
+top.mat = Sigma.inv.mat%*%mu.minus.rf
+bot.val = as.numeric(t(one.vec)%*%top.mat)
+t.vec = top.mat[,1]/bot.val
+t.vec
+
+#
+library(SIT)
+n<-dim (firm_data1.xts)[2]
+constraints = new.constraints(n, lb = -Inf, ub = +Inf)
+# SUM x.i = 1
+constraints = add.constraints(rep(1, n), 1, type = '=', constraints)
+ia <- create.historical.ia(firm_data1.xts, 12)
+ia
+weight <- min.risk.portfolio(ia, constraints)
+weight
+
+library(SIT)
+
+#Plot efficient frontier using SIT
+ia <- create.historical.ia(firm_data1.xts, 12)
+# create long-only, fully invested efficient frontier
+# 0 <= x.i <= 1
+# If short sale allowed: constraints = new.constraints(n, lb = -Inf, ub = +Inf)
+constraints = new.constraints(n, lb = 0, ub = 1)
+constraints = add.constraints(diag(n), type='>=', b=0, constraints)
+constraints = add.constraints(diag(n), type='<=', b=1, constraints)
+# SUM x.i = 1
+constraints = add.constraints(rep(1, n), 1, type = '=', constraints)
+
+# create efficient frontier
+ef = portopt(ia, constraints, 50,'Efficient Frontier') 
+ef
+
+plot.ef(ia, list(ef), portfolio.risk, T)
+
+```
+
